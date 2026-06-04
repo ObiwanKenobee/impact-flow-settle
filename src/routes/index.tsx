@@ -210,6 +210,11 @@ function Index() {
           </div>
         </section>
 
+        {/* Interactive Suite */}
+        <section id="engine" className="py-32 border-t border-border">
+          <InteractiveSuite />
+        </section>
+
         {/* History */}
         <section id="history" className="py-32 border-t border-border">
           <div className="grid md:grid-cols-12 gap-12">
