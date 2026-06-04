@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { InteractiveSuite } from "@/components/atlas/InteractiveSuite";
 
 export const Route = createFileRoute("/")({
   head: () => ({
