@@ -77,14 +77,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
+      { title: "Atlas Impact Settlement" },
+      { name: "description", content: "Atlas Sanctum is a unified settlement engine that bridges fiat liquidity, digital financial infrastructure, and verified planetary assets, enabling capital and" },
       { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { property: "og:title", content: "Atlas Impact Settlement" },
+      { property: "og:description", content: "Atlas Sanctum is a unified settlement engine that bridges fiat liquidity, digital financial infrastructure, and verified planetary assets, enabling capital and" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "Atlas Impact Settlement" },
+      { name: "twitter:description", content: "Atlas Sanctum is a unified settlement engine that bridges fiat liquidity, digital financial infrastructure, and verified planetary assets, enabling capital and" },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/5bb1b960-ad27-4583-abf5-762f4da60164/id-preview-d08e9cbf--f4c5a2ab-3dd6-496e-85d0-7dd6c7c5239e.lovable.app-1780587043349.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/5bb1b960-ad27-4583-abf5-762f4da60164/id-preview-d08e9cbf--f4c5a2ab-3dd6-496e-85d0-7dd6c7c5239e.lovable.app-1780587043349.png" },
     ],
     links: [
       {
