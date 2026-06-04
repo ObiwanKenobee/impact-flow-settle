@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { InteractiveSuite } from "@/components/atlas/InteractiveSuite";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -72,6 +73,7 @@ function Index() {
             <div className="hidden md:flex gap-6 text-[11px] font-mono tracking-widest uppercase text-muted-foreground">
               <a href="#infrastructure" className="hover:text-foreground transition-colors">The Infrastructure</a>
               <a href="#stack" className="hover:text-foreground transition-colors">Settlement Stack</a>
+              <a href="#engine" className="hover:text-foreground transition-colors">Live Engine</a>
               <a href="#history" className="hover:text-foreground transition-colors">History</a>
             </div>
           </div>
@@ -207,6 +209,11 @@ function Index() {
               ))}
             </div>
           </div>
+        </section>
+
+        {/* Interactive Suite */}
+        <section id="engine" className="py-32 border-t border-border">
+          <InteractiveSuite />
         </section>
 
         {/* History */}
