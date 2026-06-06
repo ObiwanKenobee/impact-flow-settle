@@ -1224,5 +1224,3 @@ export function InteractiveSuite() {
     </div>
   );
 }
-  );
-}
