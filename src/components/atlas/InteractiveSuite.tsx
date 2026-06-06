@@ -8,16 +8,23 @@ import {
   FX_PAIRS,
   INVESTORS,
   PROJECTS,
+  ALL_ACTORS,
   VIEWER_PROFILES,
   isAuthorizedFor,
   verifyChain,
   replayBundle,
+  determinismReport,
+  buildSignedBundleProof,
+  keyFingerprint,
   type OutcomeKind,
   type SettlementBundle,
   type SettlementEvent,
   type SettlementEventType,
   type ViewerPermissions,
 } from "@/lib/settlement-contract";
+import {
+  Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
 
 /* ============================================================
    Shared primitives
