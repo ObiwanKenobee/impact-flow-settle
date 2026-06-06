@@ -100,13 +100,16 @@ function useContractEvents() {
    ============================================================ */
 
 function PermissionBar({
-  viewer, setViewer,
-}: { viewer: ViewerPermissions; setViewer: (v: ViewerPermissions) => void }) {
+  viewer, setViewer, profiles,
+}: { viewer: ViewerPermissions; setViewer: (v: ViewerPermissions) => void; profiles: ViewerPermissions[] }) {
   const scope =
-    viewer.investors.length === 0 && viewer.projects.length === 0
+    viewer.investors.length === 0 && viewer.projects.length === 0 && (!viewer.actors || viewer.actors.length === 0)
       ? "Unrestricted"
-      : [...(viewer.investors.length ? [`inv: ${viewer.investors.join(", ")}`] : []),
-         ...(viewer.projects.length ? [`prj: ${viewer.projects.join(", ")}`] : [])].join(" · ");
+      : [
+          ...(viewer.investors.length ? [`inv: ${viewer.investors.join(", ")}`] : []),
+          ...(viewer.projects.length ? [`prj: ${viewer.projects.join(", ")}`] : []),
+          ...(viewer.actors && viewer.actors.length ? [`act: ${viewer.actors.join(", ")}`] : []),
+        ].join(" · ");
   return (
     <Panel label="Viewer Identity & Permission Scope">
       <div className="p-5 grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
@@ -115,18 +118,18 @@ function PermissionBar({
             <select
               value={viewer.label}
               onChange={(e) => {
-                const v = VIEWER_PROFILES.find((p) => p.label === e.target.value);
+                const v = profiles.find((p) => p.label === e.target.value);
                 if (v) setViewer(v);
               }}
               className="w-full px-3 py-2 border border-border bg-card font-mono text-xs"
             >
-              {VIEWER_PROFILES.map((p) => <option key={p.label}>{p.label}</option>)}
+              {profiles.map((p) => <option key={p.label}>{p.label}</option>)}
             </select>
           </Field>
         </div>
         <div className="md:col-span-7 font-mono text-[11px] text-muted-foreground">
           <div className="text-accent uppercase tracking-widest text-[10px] mb-1">Authorized scope</div>
-          {scope} — audit events and exports outside this scope are hidden.
+          {scope} — audit events, exports, and intermediary visibility are restricted to this scope.
         </div>
       </div>
     </Panel>
