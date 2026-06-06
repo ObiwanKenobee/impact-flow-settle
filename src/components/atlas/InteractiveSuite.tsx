@@ -557,12 +557,13 @@ function Badge({ ok, label }: { ok: boolean; label: string }) {
 const ALL = "__all__";
 
 function AuditTrail({
-  events, bundles, viewer, onClear,
+  events, bundles, viewer, onClear, onShowEvent,
 }: {
   events: SettlementEvent[];
   bundles: SettlementBundle[];
   viewer: ViewerPermissions;
   onClear: () => void;
+  onShowEvent: (e: SettlementEvent) => void;
 }) {
   const [q, setQ] = useState("");
   const [investor, setInvestor] = useState<string>(ALL);
