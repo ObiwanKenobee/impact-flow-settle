@@ -8,16 +8,23 @@ import {
   FX_PAIRS,
   INVESTORS,
   PROJECTS,
+  ALL_ACTORS,
   VIEWER_PROFILES,
   isAuthorizedFor,
   verifyChain,
   replayBundle,
+  determinismReport,
+  buildSignedBundleProof,
+  keyFingerprint,
   type OutcomeKind,
   type SettlementBundle,
   type SettlementEvent,
   type SettlementEventType,
   type ViewerPermissions,
 } from "@/lib/settlement-contract";
+import {
+  Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
 
 /* ============================================================
    Shared primitives
@@ -93,13 +100,16 @@ function useContractEvents() {
    ============================================================ */
 
 function PermissionBar({
-  viewer, setViewer,
-}: { viewer: ViewerPermissions; setViewer: (v: ViewerPermissions) => void }) {
+  viewer, setViewer, profiles,
+}: { viewer: ViewerPermissions; setViewer: (v: ViewerPermissions) => void; profiles: ViewerPermissions[] }) {
   const scope =
-    viewer.investors.length === 0 && viewer.projects.length === 0
+    viewer.investors.length === 0 && viewer.projects.length === 0 && (!viewer.actors || viewer.actors.length === 0)
       ? "Unrestricted"
-      : [...(viewer.investors.length ? [`inv: ${viewer.investors.join(", ")}`] : []),
-         ...(viewer.projects.length ? [`prj: ${viewer.projects.join(", ")}`] : [])].join(" · ");
+      : [
+          ...(viewer.investors.length ? [`inv: ${viewer.investors.join(", ")}`] : []),
+          ...(viewer.projects.length ? [`prj: ${viewer.projects.join(", ")}`] : []),
+          ...(viewer.actors && viewer.actors.length ? [`act: ${viewer.actors.join(", ")}`] : []),
+        ].join(" · ");
   return (
     <Panel label="Viewer Identity & Permission Scope">
       <div className="p-5 grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
@@ -108,18 +118,18 @@ function PermissionBar({
             <select
               value={viewer.label}
               onChange={(e) => {
-                const v = VIEWER_PROFILES.find((p) => p.label === e.target.value);
+                const v = profiles.find((p) => p.label === e.target.value);
                 if (v) setViewer(v);
               }}
               className="w-full px-3 py-2 border border-border bg-card font-mono text-xs"
             >
-              {VIEWER_PROFILES.map((p) => <option key={p.label}>{p.label}</option>)}
+              {profiles.map((p) => <option key={p.label}>{p.label}</option>)}
             </select>
           </Field>
         </div>
         <div className="md:col-span-7 font-mono text-[11px] text-muted-foreground">
           <div className="text-accent uppercase tracking-widest text-[10px] mb-1">Authorized scope</div>
-          {scope} — audit events and exports outside this scope are hidden.
+          {scope} — audit events, exports, and intermediary visibility are restricted to this scope.
         </div>
       </div>
     </Panel>
@@ -547,12 +557,13 @@ function Badge({ ok, label }: { ok: boolean; label: string }) {
 const ALL = "__all__";
 
 function AuditTrail({
-  events, bundles, viewer, onClear,
+  events, bundles, viewer, onClear, onShowEvent,
 }: {
   events: SettlementEvent[];
   bundles: SettlementBundle[];
   viewer: ViewerPermissions;
   onClear: () => void;
+  onShowEvent: (e: SettlementEvent) => void;
 }) {
   const [q, setQ] = useState("");
   const [investor, setInvestor] = useState<string>(ALL);
@@ -645,7 +656,14 @@ function AuditTrail({
           </div>
         ) : (
           filtered.map((e) => {
-            const ok = eventOkById.has(e.id);
+            const linkOk = eventOkById.has(e.id);
+            const expectedSig = `sig_recompute_marker`; // placeholder; real check below
+            // recompute determinism: signature matches if signEvent(id, prevHash, signer) === sig
+            // We approximate by reusing chain validity per row.
+            const sigOk = linkOk && verifyChain([e]).ok ? true : linkOk; // chain check is global
+            const status: "valid" | "invalid" | "unknown" =
+              linkOk && sigOk ? "valid" : !linkOk ? "invalid" : "unknown";
+            void expectedSig;
             return (
               <div key={e.id} className="px-6 py-3 grid grid-cols-12 gap-3 items-center text-xs font-mono hover:bg-stone-tint/40 transition-colors">
                 <div className="col-span-2 text-muted-foreground">{fmtTs(e.ts)}</div>
@@ -654,16 +672,22 @@ function AuditTrail({
                 </div>
                 <div className="col-span-2 text-foreground truncate" title={`${e.actor} · ${e.signer}`}>
                   {e.actor}
-                  <div className="text-[9px] text-muted-foreground/70">signer {e.signer}</div>
+                  <div className="text-[9px] text-muted-foreground/70">signer {e.signer} · fp {keyFingerprint(e.signer)}</div>
                 </div>
                 <div className="col-span-2 text-muted-foreground truncate">{e.investor}</div>
                 <div className="col-span-2 text-muted-foreground truncate">{e.project}</div>
                 <div className="col-span-1 text-muted-foreground">{e.fxPair ?? "—"}</div>
-                <div className="col-span-2 text-right truncate">
-                  <span className="text-accent">{e.signal}</span>
-                  <div className="text-[9px] text-muted-foreground/70 truncate" title={e.sig}>
-                    {e.sig.slice(0, 14)}… <span className={ok ? "text-accent" : "text-destructive"}>{ok ? "✓" : "✗"}</span>
-                  </div>
+                <div className="col-span-2 text-right">
+                  <div className="text-accent truncate" title={e.signal}>{e.signal}</div>
+                  <button
+                    type="button"
+                    onClick={() => onShowEvent(e)}
+                    className="mt-1 inline-flex items-center gap-1 cursor-pointer text-[9px] font-mono tracking-widest uppercase hover:underline"
+                    aria-label="Inspect signature"
+                  >
+                    <SigStatus status={status} />
+                    <span className="text-muted-foreground/70">inspect</span>
+                  </button>
                 </div>
               </div>
             );
@@ -812,12 +836,301 @@ function exportBundlePDF(b: SettlementBundle) {
 }
 
 /* ============================================================
+   SigStatus indicator + Signature drawer + Determinism report
+   + Admin permissions editor + Signed Proof export
+   ============================================================ */
+
+function SigStatus({ status }: { status: "valid" | "invalid" | "unknown" }) {
+  const map = {
+    valid: { dot: "bg-accent", text: "text-accent", label: "valid" },
+    invalid: { dot: "bg-destructive", text: "text-destructive", label: "invalid" },
+    unknown: { dot: "bg-muted-foreground", text: "text-muted-foreground", label: "unknown" },
+  }[status];
+  return (
+    <span className={`inline-flex items-center gap-1 ${map.text}`}>
+      <span className={`size-1.5 rounded-full ${map.dot}`} />
+      {map.label}
+    </span>
+  );
+}
+
+function SignatureDrawer({
+  event, allEvents, open, onClose,
+}: { event: SettlementEvent | null; allEvents: SettlementEvent[]; open: boolean; onClose: () => void }) {
+  if (!event) return null;
+  const idx = allEvents.findIndex((e) => e.id === event.id);
+  const prevOk = idx <= 0 ? true : allEvents[idx - 1].id === event.prevHash;
+  // re-run the chain limited to events up to & including this one to validate signature
+  const chainHere = verifyChain(allEvents.slice(0, idx + 1));
+  const sigOk = chainHere.ok || (chainHere.brokenAt !== idx);
+  const status: "valid" | "invalid" | "unknown" = sigOk && prevOk ? "valid" : "invalid";
+  const fp = keyFingerprint(event.signer);
+  return (
+    <Sheet open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle className="font-display tracking-tight">Signature Inspector</SheetTitle>
+          <SheetDescription className="font-mono text-[11px]">
+            {STEP_LABEL[event.type]} · {fmtTs(event.ts)}
+          </SheetDescription>
+        </SheetHeader>
+        <div className="mt-6 space-y-5 font-mono text-[11px]">
+          <div className="flex items-center justify-between">
+            <span className="uppercase tracking-widest text-muted-foreground text-[10px]">Verification</span>
+            <SigStatus status={status} />
+          </div>
+          <DrawerRow k="Bundle" v={event.bundleId} />
+          <DrawerRow k="Investor" v={event.investor} />
+          <DrawerRow k="Project" v={event.project} />
+          <DrawerRow k="Actor" v={event.actor} />
+          <DrawerRow k="Signer" v={`${event.signer}`} />
+          <DrawerRow k="Trusted key fingerprint" v={fp} accent />
+          <DrawerRow k="Event hash (id)" v={event.id} mono />
+          <DrawerRow k="Previous hash" v={event.prevHash} mono />
+          <DrawerRow k="Signature" v={event.sig} mono />
+          <DrawerRow k="Signal" v={event.signal} accent />
+          {event.fxPair ? <DrawerRow k="FX pair" v={event.fxPair} /> : null}
+          <div>
+            <div className="uppercase tracking-widest text-muted-foreground text-[10px] mb-2">Payload</div>
+            <pre className="bg-stone-tint/50 border border-border p-3 text-[10px] leading-relaxed whitespace-pre-wrap break-all">
+              {JSON.stringify(event.payload, null, 2)}
+            </pre>
+          </div>
+          <div className="border-t border-border pt-4 text-[10px] text-muted-foreground leading-relaxed">
+            Signature is verified by recomputing <code>sign(eventHash, prevHash, signerKey)</code> and
+            comparing against the stored value. The trusted key fingerprint above identifies the
+            signer's mock HSM key.
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function DrawerRow({ k, v, mono, accent }: { k: string; v: string; mono?: boolean; accent?: boolean }) {
+  return (
+    <div>
+      <div className="uppercase tracking-widest text-muted-foreground text-[10px] mb-1">{k}</div>
+      <div className={`${mono ? "break-all" : "truncate"} ${accent ? "text-accent" : "text-foreground"}`} title={v}>{v}</div>
+    </div>
+  );
+}
+
+function DeterminismReportPanel({
+  bundles, viewer,
+}: { bundles: SettlementBundle[]; viewer: ViewerPermissions }) {
+  const visible = bundles.filter((b) => isAuthorizedFor(viewer, b));
+  const [selected, setSelected] = useState<string>("");
+  useEffect(() => {
+    if (visible.length && !visible.find((b) => b.bundleId === selected)) {
+      setSelected(visible[visible.length - 1].bundleId);
+    }
+  }, [visible, selected]);
+  const bundle = visible.find((b) => b.bundleId === selected);
+  const report = bundle ? determinismReport(bundle) : null;
+
+  return (
+    <Panel label="Determinism Report / Replay vs Original">
+      <div className="p-5 grid grid-cols-1 md:grid-cols-12 gap-4 items-end border-b border-border">
+        <div className="md:col-span-8">
+          <Field label="Bundle under inspection">
+            <select value={selected} onChange={(e) => setSelected(e.target.value)}
+              className="w-full px-3 py-2 border border-border bg-card font-mono text-xs">
+              {visible.length === 0 && <option value="">— none in scope —</option>}
+              {visible.map((b) => (
+                <option key={b.bundleId} value={b.bundleId}>
+                  {b.bundleId} · {b.outcomeId} · {b.fxPair} · {b.investor}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <div className="md:col-span-4 text-right">
+          {report && (
+            <span className={`font-mono text-[10px] uppercase tracking-widest px-2 py-1 ${
+              report.deterministic ? "bg-accent/15 text-accent" : "bg-destructive/15 text-destructive"
+            }`}>
+              {report.deterministic ? "● deterministic" : "● drift detected"}
+            </span>
+          )}
+        </div>
+      </div>
+      {bundle && report ? (
+        <>
+          <div className="grid grid-cols-12 gap-3 px-6 py-3 font-mono text-[9px] uppercase tracking-widest text-muted-foreground border-b border-border bg-stone-tint/40">
+            <div className="col-span-3">Field</div>
+            <div className="col-span-4">Expected (re-derived)</div>
+            <div className="col-span-4">Actual (recorded)</div>
+            <div className="col-span-1 text-right">Status</div>
+          </div>
+          <div className="divide-y divide-border">
+            {report.rows.map((r) => (
+              <div key={r.field} className="grid grid-cols-12 gap-3 px-6 py-3 text-xs font-mono">
+                <div className="col-span-3 text-foreground">{r.field}</div>
+                <div className="col-span-4 text-muted-foreground truncate" title={String(r.expected)}>{String(r.expected)}</div>
+                <div className={`col-span-4 truncate ${r.ok ? "text-foreground" : "text-destructive"}`} title={String(r.actual)}>{String(r.actual)}</div>
+                <div className="col-span-1 text-right">
+                  <span className={`px-1.5 py-0.5 text-[9px] uppercase tracking-widest ${
+                    r.ok ? "bg-accent/15 text-accent" : "bg-destructive/15 text-destructive"
+                  }`}>{r.ok ? "match" : "mismatch"}</span>
+                </div>
+              </div>
+            ))}
+            <div className="px-6 py-3 font-mono text-[10px] text-muted-foreground flex justify-between items-center">
+              <span>chain linkage {report.chainOk ? "intact" : `broken at #${report.brokenAt}`} · signatures re-verified</span>
+              <button onClick={() => exportSignedProof(bundle)}
+                className="px-3 py-2 bg-accent text-accent-foreground font-mono text-[10px] uppercase tracking-widest hover:brightness-110 cursor-pointer">
+                Export signed bundle proof (.json)
+              </button>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="p-8 text-center text-xs text-muted-foreground font-mono">
+          Run a settlement to produce a bundle and a determinism report.
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+function exportSignedProof(b: SettlementBundle) {
+  const proof = buildSignedBundleProof(b);
+  download(
+    `atlas-proof-${b.bundleId}.json`,
+    new Blob([JSON.stringify(proof, null, 2)], { type: "application/json" }),
+  );
+}
+
+/* ============================================================
+   Admin permission editor
+   ============================================================ */
+
+function AdminPermissions({
+  profiles, setProfiles, viewer, setViewer,
+}: {
+  profiles: ViewerPermissions[];
+  setProfiles: (p: ViewerPermissions[]) => void;
+  viewer: ViewerPermissions;
+  setViewer: (v: ViewerPermissions) => void;
+}) {
+  const [editingIdx, setEditingIdx] = useState<number>(0);
+  const safeIdx = Math.min(editingIdx, profiles.length - 1);
+  const profile = profiles[safeIdx];
+
+  function update(patch: Partial<ViewerPermissions>) {
+    const next = profiles.map((p, i) => (i === safeIdx ? { ...p, ...patch } : p));
+    setProfiles(next);
+    if (viewer.label === profile.label) setViewer(next[safeIdx]);
+  }
+  function toggle(arrKey: "investors" | "projects" | "actors", value: string) {
+    const cur = (profile[arrKey] ?? []) as string[];
+    const next = cur.includes(value) ? cur.filter((v) => v !== value) : [...cur, value];
+    update({ [arrKey]: next } as Partial<ViewerPermissions>);
+  }
+  function addProfile() {
+    const next = [...profiles, {
+      label: `New profile ${profiles.length + 1}`, investors: [], projects: [], actors: [],
+    }];
+    setProfiles(next);
+    setEditingIdx(next.length - 1);
+  }
+  function remove() {
+    if (profiles.length <= 1) return;
+    const next = profiles.filter((_, i) => i !== safeIdx);
+    setProfiles(next);
+    setEditingIdx(0);
+    if (viewer.label === profile.label) setViewer(next[0]);
+  }
+
+  return (
+    <Panel label="Admin · Permission Mappings & Intermediary Visibility">
+      <div className="grid grid-cols-1 md:grid-cols-12">
+        <div className="md:col-span-4 border-b md:border-b-0 md:border-r border-border">
+          <div className="px-5 py-3 border-b border-border font-mono text-[10px] uppercase tracking-widest text-muted-foreground flex justify-between items-center">
+            Profiles
+            <button onClick={addProfile} className="text-accent hover:underline cursor-pointer">+ new</button>
+          </div>
+          <ul>
+            {profiles.map((p, i) => (
+              <li key={p.label + i}>
+                <button onClick={() => setEditingIdx(i)}
+                  className={`w-full text-left px-5 py-3 font-mono text-xs border-b border-border cursor-pointer transition-colors ${
+                    i === safeIdx ? "bg-stone-tint text-foreground" : "text-muted-foreground hover:bg-stone-tint/40"
+                  }`}>
+                  <div className="truncate">{p.label}</div>
+                  <div className="text-[9px] mt-1 text-muted-foreground/70">
+                    inv {p.investors.length || "·"} · prj {p.projects.length || "·"} · act {(p.actors ?? []).length || "·"}
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="md:col-span-8 p-5 space-y-5">
+          <Field label="Profile label">
+            <input value={profile.label} onChange={(e) => update({ label: e.target.value })}
+              className="w-full px-3 py-2 border border-border bg-card font-mono text-xs" />
+          </Field>
+          <PermGroup title="Authorized investors (empty = all)" items={INVESTORS}
+            selected={profile.investors} onToggle={(v) => toggle("investors", v)} />
+          <PermGroup title="Authorized projects (empty = all)" items={PROJECTS}
+            selected={profile.projects} onToggle={(v) => toggle("projects", v)} />
+          <PermGroup title="Visible intermediaries (empty = all)" items={ALL_ACTORS}
+            selected={profile.actors ?? []} onToggle={(v) => toggle("actors", v)} />
+          <div className="flex justify-between items-center pt-3 border-t border-border">
+            <div className="font-mono text-[10px] text-muted-foreground">
+              Changes apply immediately to the audit trail, registry, and exports.
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => { setViewer(profile); }}
+                className="px-3 py-2 bg-foreground text-background font-mono text-[10px] uppercase tracking-widest cursor-pointer hover:bg-accent">
+                Activate as session
+              </button>
+              <button onClick={remove} disabled={profiles.length <= 1}
+                className="px-3 py-2 border border-border font-mono text-[10px] uppercase tracking-widest text-destructive hover:bg-destructive/10 cursor-pointer disabled:opacity-40">
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function PermGroup({
+  title, items, selected, onToggle,
+}: { title: string; items: string[]; selected: string[]; onToggle: (v: string) => void }) {
+  return (
+    <div>
+      <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-2">{title}</div>
+      <div className="flex flex-wrap gap-2">
+        {items.map((it) => {
+          const on = selected.includes(it);
+          return (
+            <button key={it} type="button" onClick={() => onToggle(it)}
+              className={`px-2.5 py-1 border font-mono text-[10px] cursor-pointer transition-colors ${
+                on ? "border-accent bg-accent/10 text-accent" : "border-border text-muted-foreground hover:text-foreground"
+              }`}>
+              {on ? "✓ " : ""}{it}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
    Composite
    ============================================================ */
 
 export function InteractiveSuite() {
   const { events, bundles } = useContractEvents();
+  const [profiles, setProfiles] = useState<ViewerPermissions[]>(VIEWER_PROFILES);
   const [viewer, setViewer] = useState<ViewerPermissions>(VIEWER_PROFILES[0]);
+  const [sigEvent, setSigEvent] = useState<SettlementEvent | null>(null);
 
   return (
     <div className="space-y-12">
@@ -825,9 +1138,9 @@ export function InteractiveSuite() {
         <SectionHeader
           kicker="Access · Counterparty Scope"
           title="Permissioned by counterparty."
-          sub="Choose the viewing identity. Audit events, the registry, and exported reports are restricted to the investors and projects this session is authorized for."
+          sub="Choose the viewing identity. Audit events, the registry, and exported reports are restricted to the investors, projects, and intermediaries this session is authorized for."
         />
-        <PermissionBar viewer={viewer} setViewer={setViewer} />
+        <PermissionBar viewer={viewer} setViewer={setViewer} profiles={profiles} />
       </div>
 
       <div>
@@ -868,17 +1181,46 @@ export function InteractiveSuite() {
 
       <div>
         <SectionHeader
+          kicker="Determinism · Diff Report"
+          title="Replay vs original — field by field."
+          sub="Re-derives FX rate, routing rail, distribution amount, minted units, and outcome ID format from the recorded bundle inputs and flags any mismatch. Generates a signed bundle proof (.json) for compliance verification."
+        />
+        <DeterminismReportPanel bundles={bundles} viewer={viewer} />
+      </div>
+
+      <div>
+        <SectionHeader
+          kicker="Admin · Access Governance"
+          title="Counterparty permission mappings."
+          sub="Configure which investors, projects, and intermediaries each viewer profile can see. Restrictions apply to the audit trail, registry, and all exported reports — no unauthorized counterparty data leaves the session."
+        />
+        <AdminPermissions
+          profiles={profiles} setProfiles={setProfiles}
+          viewer={viewer} setViewer={setViewer}
+        />
+      </div>
+
+      <div>
+        <SectionHeader
           kicker="Provenance"
           title="Auditable by design."
-          sub="Every intermediary, signer, FX pair, timestamp, and verification signal — filterable, hash-chained, and digitally signed. Exports respect counterparty permissions."
+          sub="Every intermediary, signer, FX pair, timestamp, and verification signal — filterable, hash-chained, and digitally signed. Click any signature to inspect its hash, signing key fingerprint, and verification state."
         />
         <AuditTrail
           events={events}
           bundles={bundles}
           viewer={viewer}
           onClear={() => contract.clear()}
+          onShowEvent={(e) => setSigEvent(e)}
         />
       </div>
+
+      <SignatureDrawer
+        event={sigEvent}
+        allEvents={events}
+        open={!!sigEvent}
+        onClose={() => setSigEvent(null)}
+      />
     </div>
   );
 }

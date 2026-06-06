@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { InteractiveSuite } from "@/components/atlas/InteractiveSuite";
 
 export const Route = createFileRoute("/")({
@@ -75,11 +75,13 @@ function Index() {
               <a href="#stack" className="hover:text-foreground transition-colors">Settlement Stack</a>
               <a href="#engine" className="hover:text-foreground transition-colors">Live Engine</a>
               <a href="#history" className="hover:text-foreground transition-colors">History</a>
+              <Link to="/pricing" className="hover:text-foreground transition-colors">Pricing</Link>
             </div>
           </div>
-          <button className="px-4 py-1.5 bg-foreground text-background text-[11px] font-mono tracking-widest uppercase hover:bg-accent transition-colors cursor-pointer">
-            Connect Node
-          </button>
+          <Link to="/pricing"
+            className="px-4 py-1.5 bg-foreground text-background text-[11px] font-mono tracking-widest uppercase hover:bg-accent transition-colors cursor-pointer">
+            View Pricing
+          </Link>
         </div>
       </nav>
 

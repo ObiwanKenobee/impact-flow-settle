@@ -357,16 +357,22 @@ export function replayBundle(b: SettlementBundle): { steps: ReplayStep[]; determ
 }
 function offsetGuess(_e: SettlementEvent) { return 0; } // hook for future seq exposure
 
-// Permissions: a viewer holds a list of authorized investors and projects.
+// Permissions: a viewer holds a list of authorized investors, projects,
+// and (optionally) intermediaries/actors visible in the audit trail.
 export interface ViewerPermissions {
   label: string;
   investors: string[]; // [] means "any"
   projects: string[];  // [] means "any"
+  actors?: string[];   // [] or undefined means "any intermediary"
 }
-export function isAuthorizedFor(p: ViewerPermissions, e: { investor: string; project: string }) {
+export function isAuthorizedFor(
+  p: ViewerPermissions,
+  e: { investor: string; project: string; actor?: string },
+) {
   const okInv = p.investors.length === 0 || p.investors.includes(e.investor);
   const okPrj = p.projects.length === 0 || p.projects.includes(e.project);
-  return okInv && okPrj;
+  const okAct = !p.actors || p.actors.length === 0 || (e.actor ? p.actors.includes(e.actor) : true);
+  return okInv && okPrj && okAct;
 }
 
 // Investor / project rosters for the demo
@@ -383,13 +389,141 @@ export const PROJECTS = [
   "RW-007 Volcanoes NP",
   "TZ-031 Kilombero",
 ];
+export const ALL_ACTORS = [
+  "FX Engine",
+  "Liquidity Router",
+  "Oracle Network",
+  "Atlas Registry",
+  "Settlement Engine",
+];
 export const FX_PAIRS = Object.keys(FX_RATES);
 
 // Pre-baked viewer profiles for the permission selector.
 export const VIEWER_PROFILES: ViewerPermissions[] = [
-  { label: "Compliance Admin (all access)", investors: [], projects: [] },
-  { label: "Helix Capital · investor view", investors: ["Helix Capital"], projects: [] },
-  { label: "Nordic Climate Fund · investor view", investors: ["Nordic Climate Fund"], projects: [] },
-  { label: "KE-001 Mau Forest · operator view", investors: [], projects: ["KE-001 Mau Forest"] },
-  { label: "Aurora × Tana Delta · scoped", investors: ["Aurora Pension"], projects: ["KE-014 Tana Delta"] },
+  { label: "Compliance Admin (all access)", investors: [], projects: [], actors: [] },
+  { label: "Helix Capital · investor view", investors: ["Helix Capital"], projects: [], actors: [] },
+  { label: "Nordic Climate Fund · investor view", investors: ["Nordic Climate Fund"], projects: [], actors: [] },
+  { label: "KE-001 Mau Forest · operator view", investors: [], projects: ["KE-001 Mau Forest"], actors: [] },
+  { label: "Aurora × Tana Delta · scoped", investors: ["Aurora Pension"], projects: ["KE-014 Tana Delta"], actors: [] },
+  {
+    label: "Oracle Auditor (verification-only)",
+    investors: [], projects: [],
+    actors: ["Oracle Network", "Atlas Registry"],
+  },
 ];
+
+/* ============================================================
+   Key fingerprints, determinism report, signed bundle proof
+   ============================================================ */
+
+/** Short, stable fingerprint of a signer key for UI display. */
+export function keyFingerprint(signer: string): string {
+  const key = SIGNER_KEYS[signer] ?? "k_unknown";
+  const h = djb2(key);
+  return `${h.slice(0, 4)}:${h.slice(4, 8)}`.toUpperCase();
+}
+
+export interface DeterminismRow {
+  field: string;
+  expected: string | number;
+  actual: string | number;
+  ok: boolean;
+}
+export interface DeterminismReport {
+  bundleId: string;
+  deterministic: boolean;
+  rows: DeterminismRow[];
+  chainOk: boolean;
+  brokenAt?: number;
+}
+
+/**
+ * Compares a recorded bundle's outputs against deterministic re-derivations
+ * from its inputs (FX rate, rail, distribution amount, units, outcome ID
+ * pattern) and re-runs signature/chain verification.
+ */
+export function determinismReport(b: SettlementBundle): DeterminismReport {
+  const expectedRate = FX_RATES[b.fxPair];
+  const expectedRail = FX_RAILS[b.fxPair]?.corridor ?? "";
+  const fee = b.amountIn * (b.feeBps / 10000);
+  const expectedOut = +((b.amountIn - fee) * expectedRate).toFixed(2);
+  const distEvt = b.events.find((e) => e.type === "distribute");
+  const actualYield = Number(distEvt?.payload.yieldOut ?? 0);
+  const expectedYield = Math.round(expectedOut * 0.07);
+  const cat = OUTCOME_CATALOG[b.kind];
+  const expectedUnits = Math.floor(b.amountIn / cat.pricePerUnitEUR);
+  const outcomePattern = new RegExp(`^${cat.symbol}-\\d{4}$`);
+
+  const rows: DeterminismRow[] = [
+    { field: "FX rate", expected: expectedRate, actual: b.rate, ok: b.rate === expectedRate },
+    { field: "Routing rail", expected: expectedRail, actual: b.rail, ok: b.rail === expectedRail },
+    { field: "Amount out", expected: expectedOut, actual: +b.amountOut.toFixed(2), ok: Math.abs(b.amountOut - expectedOut) < 0.01 },
+    { field: "Distribution (yield)", expected: expectedYield, actual: actualYield, ok: expectedYield === actualYield },
+    { field: "Minted units", expected: expectedUnits, actual: b.units, ok: b.units === expectedUnits },
+    { field: "Outcome ID format", expected: `${cat.symbol}-####`, actual: b.outcomeId, ok: outcomePattern.test(b.outcomeId) },
+  ];
+  const chain = verifyChain(b.events);
+  const deterministic = rows.every((r) => r.ok) && chain.ok;
+  return { bundleId: b.bundleId, deterministic, rows, chainOk: chain.ok, brokenAt: chain.brokenAt };
+}
+
+export interface SignedBundleProof {
+  format: "atlas.sanctum.proof.v1";
+  generatedAt: string;
+  bundleId: string;
+  investor: string;
+  project: string;
+  outcomeId: string;
+  fxPair: string;
+  rate: number;
+  rail: string;
+  amountIn: number;
+  amountOut: number;
+  feeBps: number;
+  signers: { name: string; fingerprint: string }[];
+  events: {
+    seq: number;
+    type: SettlementEventType;
+    ts: string;
+    signer: string;
+    keyFingerprint: string;
+    id: string;
+    prevHash: string;
+    sig: string;
+  }[];
+  verification: ChainVerification;
+  determinism: DeterminismReport;
+}
+
+export function buildSignedBundleProof(b: SettlementBundle): SignedBundleProof {
+  const seen = new Set<string>();
+  const signers: { name: string; fingerprint: string }[] = [];
+  b.events.forEach((e) => {
+    if (!seen.has(e.signer)) {
+      seen.add(e.signer);
+      signers.push({ name: e.signer, fingerprint: keyFingerprint(e.signer) });
+    }
+  });
+  return {
+    format: "atlas.sanctum.proof.v1",
+    generatedAt: new Date().toISOString(),
+    bundleId: b.bundleId,
+    investor: b.investor,
+    project: b.project,
+    outcomeId: b.outcomeId,
+    fxPair: b.fxPair,
+    rate: b.rate,
+    rail: b.rail,
+    amountIn: b.amountIn,
+    amountOut: b.amountOut,
+    feeBps: b.feeBps,
+    signers,
+    events: b.events.map((e, i) => ({
+      seq: i + 1, type: e.type, ts: e.ts, signer: e.signer,
+      keyFingerprint: keyFingerprint(e.signer),
+      id: e.id, prevHash: e.prevHash, sig: e.sig,
+    })),
+    verification: verifyChain(b.events),
+    determinism: determinismReport(b),
+  };
+}
