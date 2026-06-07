@@ -25,6 +25,7 @@ import {
 import {
   Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
+import { TierGate } from "@/components/atlas/TierGate";
 
 /* ============================================================
    Shared primitives
