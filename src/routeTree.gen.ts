@@ -9,10 +9,17 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as VerifyRouteImport } from './routes/verify'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as CheckoutSuccessRouteImport } from './routes/checkout.success'
 import { Route as ApiPublicWebhooksCheckoutRouteImport } from './routes/api/public/webhooks/checkout'
 
+const VerifyRoute = VerifyRouteImport.update({
+  id: '/verify',
+  path: '/verify',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PricingRoute = PricingRouteImport.update({
   id: '/pricing',
   path: '/pricing',
@@ -21,6 +28,11 @@ const PricingRoute = PricingRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CheckoutSuccessRoute = CheckoutSuccessRouteImport.update({
+  id: '/checkout/success',
+  path: '/checkout/success',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicWebhooksCheckoutRoute =
@@ -33,35 +45,66 @@ const ApiPublicWebhooksCheckoutRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/pricing': typeof PricingRoute
+  '/verify': typeof VerifyRoute
+  '/checkout/success': typeof CheckoutSuccessRoute
   '/api/public/webhooks/checkout': typeof ApiPublicWebhooksCheckoutRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/pricing': typeof PricingRoute
+  '/verify': typeof VerifyRoute
+  '/checkout/success': typeof CheckoutSuccessRoute
   '/api/public/webhooks/checkout': typeof ApiPublicWebhooksCheckoutRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/pricing': typeof PricingRoute
+  '/verify': typeof VerifyRoute
+  '/checkout/success': typeof CheckoutSuccessRoute
   '/api/public/webhooks/checkout': typeof ApiPublicWebhooksCheckoutRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/pricing' | '/api/public/webhooks/checkout'
+  fullPaths:
+    | '/'
+    | '/pricing'
+    | '/verify'
+    | '/checkout/success'
+    | '/api/public/webhooks/checkout'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/pricing' | '/api/public/webhooks/checkout'
-  id: '__root__' | '/' | '/pricing' | '/api/public/webhooks/checkout'
+  to:
+    | '/'
+    | '/pricing'
+    | '/verify'
+    | '/checkout/success'
+    | '/api/public/webhooks/checkout'
+  id:
+    | '__root__'
+    | '/'
+    | '/pricing'
+    | '/verify'
+    | '/checkout/success'
+    | '/api/public/webhooks/checkout'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   PricingRoute: typeof PricingRoute
+  VerifyRoute: typeof VerifyRoute
+  CheckoutSuccessRoute: typeof CheckoutSuccessRoute
   ApiPublicWebhooksCheckoutRoute: typeof ApiPublicWebhooksCheckoutRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/verify': {
+      id: '/verify'
+      path: '/verify'
+      fullPath: '/verify'
+      preLoaderRoute: typeof VerifyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pricing': {
       id: '/pricing'
       path: '/pricing'
@@ -74,6 +117,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/checkout/success': {
+      id: '/checkout/success'
+      path: '/checkout/success'
+      fullPath: '/checkout/success'
+      preLoaderRoute: typeof CheckoutSuccessRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/webhooks/checkout': {
@@ -89,6 +139,8 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   PricingRoute: PricingRoute,
+  VerifyRoute: VerifyRoute,
+  CheckoutSuccessRoute: CheckoutSuccessRoute,
   ApiPublicWebhooksCheckoutRoute: ApiPublicWebhooksCheckoutRoute,
 }
 export const routeTree = rootRouteImport
