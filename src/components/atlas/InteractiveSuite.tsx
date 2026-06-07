@@ -25,6 +25,7 @@ import {
 import {
   Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
+import { TierGate } from "@/components/atlas/TierGate";
 
 /* ============================================================
    Shared primitives
@@ -1149,7 +1150,9 @@ export function InteractiveSuite() {
           title="Settlement Simulator."
           sub="Drive a settlement across multiple FX pairs and rails (EUR/KES Pesalink, USD/KES SWIFT, EUR/USD CLS). Real-time mode animates each step; outcome templates select the oracle network and registry metadata."
         />
-        <SettlementSimulator />
+        <TierGate feature="liveEngine" label="Live Engine">
+          <SettlementSimulator />
+        </TierGate>
       </div>
 
       <div>
@@ -1176,7 +1179,9 @@ export function InteractiveSuite() {
           title="Re-run any bundle, byte-for-byte."
           sub="Replay a recorded settlement step-by-step. Each event's signature is re-derived from its signer key and the previous hash; chain linkage is verified end-to-end."
         />
-        <ReplayView bundles={bundles} viewer={viewer} />
+        <TierGate feature="replay" label="Event Replay">
+          <ReplayView bundles={bundles} viewer={viewer} />
+        </TierGate>
       </div>
 
       <div>
@@ -1185,7 +1190,9 @@ export function InteractiveSuite() {
           title="Replay vs original — field by field."
           sub="Re-derives FX rate, routing rail, distribution amount, minted units, and outcome ID format from the recorded bundle inputs and flags any mismatch. Generates a signed bundle proof (.json) for compliance verification."
         />
-        <DeterminismReportPanel bundles={bundles} viewer={viewer} />
+        <TierGate feature="replay" label="Determinism Report">
+          <DeterminismReportPanel bundles={bundles} viewer={viewer} />
+        </TierGate>
       </div>
 
       <div>
@@ -1194,10 +1201,12 @@ export function InteractiveSuite() {
           title="Counterparty permission mappings."
           sub="Configure which investors, projects, and intermediaries each viewer profile can see. Restrictions apply to the audit trail, registry, and all exported reports — no unauthorized counterparty data leaves the session."
         />
-        <AdminPermissions
-          profiles={profiles} setProfiles={setProfiles}
-          viewer={viewer} setViewer={setViewer}
-        />
+        <TierGate feature="admin" label="Admin · Access Governance">
+          <AdminPermissions
+            profiles={profiles} setProfiles={setProfiles}
+            viewer={viewer} setViewer={setViewer}
+          />
+        </TierGate>
       </div>
 
       <div>

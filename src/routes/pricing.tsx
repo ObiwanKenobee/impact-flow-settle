@@ -1,5 +1,8 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
+import { createCheckout } from "@/lib/checkout.functions";
+import type { Tier as TierName } from "@/lib/entitlements";
 
 export const Route = createFileRoute("/pricing")({
   head: () => ({
@@ -84,6 +87,29 @@ const TIERS: Tier[] = [
 
 function Pricing() {
   const [cycle, setCycle] = useState<Cycle>("monthly");
+  const [email, setEmail] = useState("");
+  const [pending, setPending] = useState<TierName | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const checkout = useServerFn(createCheckout);
+
+  async function startCheckout(tier: TierName) {
+    setError(null);
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      setError("Enter a valid email to continue.");
+      return;
+    }
+    setPending(tier);
+    try {
+      const { checkoutUrl } = await checkout({ data: { tier, cycle, email } });
+      // In production this is the provider's hosted URL. Here it's our own
+      // success page that completes the mock webhook callback.
+      navigate({ to: checkoutUrl });
+    } catch (e) {
+      setError((e as Error).message);
+      setPending(null);
+    }
+  }
 
   return (
     <div className="bg-background text-foreground font-body min-h-screen">
@@ -171,13 +197,16 @@ function Pricing() {
                 </ul>
 
                 <button
-                  className={`mt-8 px-4 py-3 font-mono text-[11px] uppercase tracking-widest cursor-pointer transition-colors ${
+                  type="button"
+                  disabled={pending !== null}
+                  onClick={() => startCheckout(t.name as TierName)}
+                  className={`mt-8 px-4 py-3 font-mono text-[11px] uppercase tracking-widest cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-wait ${
                     t.accent
                       ? "bg-accent text-accent-foreground hover:brightness-110"
                       : "bg-foreground text-background hover:bg-accent"
                   }`}
                 >
-                  Subscribe — {t.name}
+                  {pending === t.name ? "Redirecting…" : `Subscribe — ${t.name}`}
                 </button>
                 <div className="mt-3 font-mono text-[10px] text-muted-foreground text-center">
                   Card, SEPA, or wire · 30-day pilot
@@ -186,6 +215,30 @@ function Pricing() {
             );
           })}
         </section>
+
+        {/* Email capture for checkout */}
+        <section className="pb-12 -mt-20">
+          <div className="max-w-xl mx-auto border border-border bg-card p-6">
+            <label htmlFor="email" className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              Billing email
+            </label>
+            <input
+              id="email"
+              type="email"
+              autoComplete="email"
+              placeholder="you@institution.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="mt-2 w-full bg-background border border-border px-3 py-2 font-mono text-sm focus:outline-none focus:border-accent"
+            />
+            <p className="font-mono text-[10px] text-muted-foreground mt-2">
+              Required to provision tier access after checkout. The webhook records the purchase
+              and unlocks the corresponding panels (Live Engine · Replay · Admin) immediately.
+            </p>
+            {error && <p className="font-mono text-[10px] text-destructive mt-2">{error}</p>}
+          </div>
+        </section>
+
 
         {/* Payment methods */}
         <section className="py-16 border-t border-border">
