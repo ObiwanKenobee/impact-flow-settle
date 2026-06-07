@@ -1,5 +1,8 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
+import { createCheckout } from "@/lib/checkout.functions";
+import type { Tier } from "@/lib/entitlements";
 
 export const Route = createFileRoute("/pricing")({
   head: () => ({
