@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiPublicWebhooksCheckoutRouteImport } from './routes/api/public/webhooks/checkout'
 
 const PricingRoute = PricingRouteImport.update({
   id: '/pricing',
@@ -22,31 +23,41 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicWebhooksCheckoutRoute =
+  ApiPublicWebhooksCheckoutRouteImport.update({
+    id: '/api/public/webhooks/checkout',
+    path: '/api/public/webhooks/checkout',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/pricing': typeof PricingRoute
+  '/api/public/webhooks/checkout': typeof ApiPublicWebhooksCheckoutRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/pricing': typeof PricingRoute
+  '/api/public/webhooks/checkout': typeof ApiPublicWebhooksCheckoutRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/pricing': typeof PricingRoute
+  '/api/public/webhooks/checkout': typeof ApiPublicWebhooksCheckoutRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/pricing'
+  fullPaths: '/' | '/pricing' | '/api/public/webhooks/checkout'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/pricing'
-  id: '__root__' | '/' | '/pricing'
+  to: '/' | '/pricing' | '/api/public/webhooks/checkout'
+  id: '__root__' | '/' | '/pricing' | '/api/public/webhooks/checkout'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   PricingRoute: typeof PricingRoute
+  ApiPublicWebhooksCheckoutRoute: typeof ApiPublicWebhooksCheckoutRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -65,12 +76,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/webhooks/checkout': {
+      id: '/api/public/webhooks/checkout'
+      path: '/api/public/webhooks/checkout'
+      fullPath: '/api/public/webhooks/checkout'
+      preLoaderRoute: typeof ApiPublicWebhooksCheckoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   PricingRoute: PricingRoute,
+  ApiPublicWebhooksCheckoutRoute: ApiPublicWebhooksCheckoutRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

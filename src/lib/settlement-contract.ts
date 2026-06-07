@@ -527,3 +527,93 @@ export function buildSignedBundleProof(b: SettlementBundle): SignedBundleProof {
     determinism: determinismReport(b),
   };
 }
+
+/* ============================================================
+   Proof verification (for the /verify upload page)
+   ============================================================ */
+
+export interface ProofVerificationResult {
+  ok: boolean;
+  formatOk: boolean;
+  chainOk: boolean;
+  brokenAt?: number;
+  brokenReason?: string;
+  eventResults: {
+    seq: number;
+    type: SettlementEventType;
+    signer: string;
+    expectedFingerprint: string;
+    providedFingerprint: string;
+    fingerprintOk: boolean;
+    expectedSig: string;
+    providedSig: string;
+    sigOk: boolean;
+    prevHashOk: boolean;
+  }[];
+  determinismMismatches: { field: string; expected: string | number; actual: string | number }[];
+}
+
+/**
+ * Re-verifies a SignedBundleProof end-to-end. Independent of the proof's own
+ * `verification` / `determinism` blocks — we recompute everything from the
+ * recorded inputs and the trusted signer-key registry.
+ */
+export function verifyProof(proof: SignedBundleProof): ProofVerificationResult {
+  const formatOk = proof?.format === "atlas.sanctum.proof.v1" && Array.isArray(proof?.events);
+  if (!formatOk) {
+    return { ok: false, formatOk: false, chainOk: false, eventResults: [], determinismMismatches: [] };
+  }
+
+  const eventResults: ProofVerificationResult["eventResults"] = [];
+  let chainOk = true;
+  let brokenAt: number | undefined;
+  let brokenReason: string | undefined;
+
+  proof.events.forEach((e, i) => {
+    const expectedFingerprint = keyFingerprint(e.signer);
+    const expectedSig = signEvent(e.id, e.prevHash, e.signer);
+    const sigOk = expectedSig === e.sig;
+    const fingerprintOk = expectedFingerprint === e.keyFingerprint;
+    const prevHashOk = i === 0 ? true : e.prevHash === proof.events[i - 1].id;
+
+    if (chainOk && (!sigOk || !prevHashOk)) {
+      chainOk = false;
+      brokenAt = i;
+      brokenReason = !sigOk ? "signature mismatch" : "prevHash mismatch";
+    }
+
+    eventResults.push({
+      seq: e.seq, type: e.type, signer: e.signer,
+      expectedFingerprint, providedFingerprint: e.keyFingerprint, fingerprintOk,
+      expectedSig, providedSig: e.sig, sigOk, prevHashOk,
+    });
+  });
+
+  // Determinism: re-derive deterministic outputs from the proof's recorded inputs.
+  const determinismMismatches: { field: string; expected: string | number; actual: string | number }[] = [];
+  const expectedRate = FX_RATES[proof.fxPair];
+  const expectedRail = FX_RAILS[proof.fxPair]?.corridor ?? "";
+  if (expectedRate !== undefined && proof.rate !== expectedRate) {
+    determinismMismatches.push({ field: "FX rate", expected: expectedRate, actual: proof.rate });
+  }
+  if (expectedRail && proof.rail !== expectedRail) {
+    determinismMismatches.push({ field: "Routing rail", expected: expectedRail, actual: proof.rail });
+  }
+  if (expectedRate !== undefined) {
+    const fee = proof.amountIn * (proof.feeBps / 10000);
+    const expectedOut = +((proof.amountIn - fee) * expectedRate).toFixed(2);
+    if (Math.abs(proof.amountOut - expectedOut) > 0.01) {
+      determinismMismatches.push({ field: "Amount out", expected: expectedOut, actual: +proof.amountOut.toFixed(2) });
+    }
+  }
+
+  return {
+    ok: chainOk && determinismMismatches.length === 0,
+    formatOk,
+    chainOk,
+    brokenAt,
+    brokenReason,
+    eventResults,
+    determinismMismatches,
+  };
+}
